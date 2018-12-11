@@ -13,91 +13,105 @@ This file contains the stuff that does not depend on hu.dwim.graphviz.
 
 ;;; ---------------------------------------------------------------------------
 ;
-; This outputs the graph to string in accordance with the DOT file format.  
-; For more information about DOT file format, search the web for "DOTTY" and 
+; This outputs the graph to string in accordance with the DOT file format.
+; For more information about DOT file format, search the web for "DOTTY" and
 ; "GRAPHVIZ".
-;
-(defmethod graph->dot ((g basic-graph) (stream stream)
-                       &key
-                       (graph-formatter 'graph->dot-properties)
-                       (vertex-key 'vertex-id)
-                       (vertex-labeler nil)
-                       (vertex-formatter 'vertex->dot)
-                       (edge-labeler 'princ) 
-                       (edge-formatter 'edge->dot)
-                       &allow-other-keys)
-  (format stream "~A G {~%graph " 
-	  (if (contains-undirected-edge-p g) "graph" "digraph"))
-  (format stream "[")
-  (funcall graph-formatter g stream)
-  (format stream "];")
-  (terpri stream)
-  
+
+(defvar *graph-formatter* 'graph->dot-properties)
+(defvar *vertex-key* 'vertex-id)
+(defvar *vertex-labeler* nil)
+(defvar *vertex-formatter* 'vertex->dot)
+(defvar *edge-labeler* 'princ)
+(defvar *edge-formatter* 'edge->dot)
+
+(defun aux-dot-graph (graph stream)
   ;; vertex formatting
-  (iterate-vertexes 
-   g
+  (iterate-vertexes
+   graph
    (lambda (v)
      (terpri stream)
-     (let ((key (if vertex-key (funcall vertex-key v) v)))
-       (princ key stream)
-       (princ " [" stream)
-       (when vertex-labeler
-         (princ "label=\"" stream)
-         (funcall vertex-labeler v stream)
-         (princ "\", " stream))
-       (funcall vertex-formatter v stream)
+     (unless (typep v 'graph-container)
+       (let ((key (if *vertex-key* (funcall *vertex-key* v) v)))
+         (princ key stream)
+         (princ " [" stream)
+         (when *vertex-labeler*
+           (princ "label=\"" stream)
+           (funcall *vertex-labeler* v stream)
+           (princ "\", " stream))))
+
+     (funcall *vertex-formatter* v stream)
+     (unless (typep v 'graph-container)
        (princ "];" stream))))
-  
-  (let ((directed-edge-connector (if (contains-undirected-edge-p g) "--" "->"))
-        (directed-edge-tag (when (and (contains-undirected-edge-p g)
-                                      (contains-directed-edge-p g))
+
+  (let ((directed-edge-connector (if (contains-undirected-edge-p graph) "--" "->"))
+        (directed-edge-tag (when (and (contains-undirected-edge-p graph)
+                                      (contains-directed-edge-p graph))
                              "dir=forward, ")))
     (flet ((format-edge (e connector from to directed?)
              (terpri stream)
-             (princ (funcall vertex-key from) stream)
+             (princ (funcall *vertex-key* from) stream)
              (princ connector stream)
-             (princ (funcall vertex-key to) stream) 
+             (princ (funcall *vertex-key* to) stream)
              (princ " [" stream)
              (when (and directed? directed-edge-tag)
                (princ directed-edge-tag stream))
-             (when (and edge-labeler
+             (when (and *edge-labeler*
                         (not (dot-attribute-value :label e)))
                (princ "label=\"" stream)
-               (funcall edge-labeler e stream)
+               (funcall *edge-labeler* e stream)
                (princ "\"," stream))
-             (funcall edge-formatter e stream)
+             (funcall *edge-formatter* e stream)
              (princ "];" stream)))
       ;; directed edges
-      (iterate-vertexes 
-       g
+      (iterate-vertexes
+       graph
        (lambda (v)
          (iterate-target-edges
           v
-          (lambda (e) 
+          (lambda (e)
             (when (directed-edge-p e)
-              (format-edge e directed-edge-connector 
+              (format-edge e directed-edge-connector
                            (source-vertex e) (target-vertex e) t))))))
-      
+
       ;; undirected edges
       (let ((edges (make-container 'simple-associative-container)))
-        (iterate-vertexes 
-         g
+        (iterate-vertexes
+         graph
          (lambda (v)
-	   ;(spy v)
            (iterate-edges
             v
             (lambda (e)
-	      ;(spy e (undirected-edge-p e) (item-at-1 edges e))
               (when (and (undirected-edge-p e)
                          (not (item-at-1 edges e)))
                 (setf (item-at-1 edges e) t)
-                (format-edge e "--" (vertex-1 e) (vertex-2 e) nil)))))))))
-  
-  (terpri stream)
-  (princ "}" stream)
-  
-  (values g))
+                (format-edge e "--" (vertex-1 e) (vertex-2 e) nil))))))))))
 
+(defmethod graph->dot ((g basic-graph) (stream stream)
+                       &key
+                         (graph-formatter *graph-formatter*)
+                         (vertex-key *vertex-key*)
+                         (vertex-labeler *vertex-labeler*)
+                         (vertex-formatter *vertex-formatter*)
+                         (edge-labeler *edge-labeler*)
+                         (edge-formatter *edge-formatter*)
+                         &allow-other-keys)
+  ()
+  (let ((*vertex-key* vertex-key)
+        (*vertex-labeler* vertex-labeler)
+        (*vertex-formatter* vertex-formatter)
+        (*edge-labeler* edge-labeler)
+        (*edge-formatter* edge-formatter))
+    (format stream "~A G {~%graph "
+
+	    (if (contains-undirected-edge-p g) "graph" "digraph"))
+    (format stream "[")
+    (funcall graph-formatter g stream)
+    (format stream "];")
+    (terpri stream)
+    (aux-dot-graph g stream)
+    (terpri stream)
+    (princ "}" stream)
+    (values g)))
 
 #+Test
 (let ((g (make-container 'graph-container :default-edge-type :undirected)))
@@ -261,7 +275,16 @@ B--D []
     (:layers text)
     (:color text)
     (:bgcolor text)
-    (:fontname text)))
+    (:fontname text)
+
+    (:minlen integer)
+    (:outputorder text)
+    (:dim integer)
+    (:concentrate text)
+    (:sep text)
+    (:forcelabels text)
+    (:splines (:ortho :line :curved :polyline :none))
+    ))
 
 (defparameter *dot-vertex-attributes*
   '((:pos coordinate)
@@ -269,8 +292,8 @@ B--D []
     (:width float)
     (:margin float)
     (:fixedsize boolean)
-    (:label text)
-    (:shape (:record :plaintext :ellipse :circle :egg :triangle :box
+    (:label text :allow-html)
+    (:shape (:point :record :plaintext :ellipse :circle :egg :triangle :box
              :diamond :trapezium :parallelogram :house :hexagon :octagon
              :doublecircle))
     (:fontsize integer)
@@ -281,7 +304,11 @@ B--D []
     (:style (:filled :solid :dashed :dotted :bold :invis))
     (:layer text)
     (:url text)
-    (:peripheries integer)))
+    (:peripheries integer)
+
+    (:penwidth integer)
+    (:group text)
+    ))
 
 (defparameter *dot-edge-attributes*
   '((:pos spline)
@@ -295,6 +322,8 @@ B--D []
     (:style (:solid :dashed :dotted :bold :invis))
     (:color text)
     (:dir (:forward :back :both :none))
+    (:tailport text)
+    (:headport text)
     (:tailclip boolean)
     (:headclip boolean)
     (:arrowhead (:none :normal :inv :dot :odot :invdot :invodot :tee
@@ -310,11 +339,17 @@ B--D []
     (:labelfontcolor text)
     (:labeldistance integer)
     (:port-label-distance integer)
+
+    (:nojustify boolean)
     (:decorate boolean)
     (:samehead boolean)
     (:sametail boolean)
     (:constraint boolean)
-    (:layer text)))
+    (:layer text)
+
+    (:labelangle integer)
+    (:penwidth integer)
+    (:xlabel text :allow-html)))
 
 (defclass* dot-attributes-mixin ()
   ((dot-attributes nil ia))
@@ -348,7 +383,7 @@ B--D []
   (declare (ignore value))
   (ensure-valid-dot-attribute attr thing))
 
-(defmethod (setf dot-attribute-value) 
+(defmethod (setf dot-attribute-value)
     (value (attr symbol) (thing dot-attributes-mixin))
   (setf (getf (dot-attributes thing) attr) value))
 
@@ -371,14 +406,20 @@ B--D []
 (defpixel-inch-accessors width :width dot-vertex-mixin)
 (defpixel-inch-accessors height :height dot-vertex-mixin)
 
-
 (defmethod graph->dot-properties ((graph dot-graph-mixin) (stream t))
-  (loop for (name value) on (dot-attributes graph) by #'cddr
-        do
-        (print-dot-key-value name value *dot-graph-attributes* stream)))
+  (format-dot-attributes graph *dot-graph-attributes* stream)
+  ;; (loop for (name value) on (dot-attributes graph) by #'cddr
+  ;;       do
+  ;;       (print-dot-key-value name value *dot-graph-attributes* stream))
+  )
 
+;; special node :edge is here to provide default edge options in graphviz
 (defmethod vertex->dot ((vertex dot-vertex-mixin) (stream t))
-  (format-dot-attributes vertex *dot-vertex-attributes* stream))
+  (format-dot-attributes vertex
+                         (case (element vertex)
+                           (:edge *dot-edge-attributes*)
+                           (t *dot-vertex-attributes*))
+                         stream))
 
 (defmethod edge->dot ((edge dot-edge-mixin) (stream t))
   (format-dot-attributes edge *dot-edge-attributes* stream))
@@ -401,69 +442,78 @@ B--D []
   (or (assoc key *dot-edge-attributes*)
       (error "Invalid dot edge attribute ~S" key)))
 
+(defgeneric key-value-for-type-as-string (key value value-type)
+  (:method (key value value-type)
+    "Legacy"
+    (etypecase value-type
+      ((member coordinate)
+       (with-output-to-string (str)
+         (princ "\"" str)
+         (let ((first t))
+           (dolist (el value)
+             (unless first
+               (princ "," str))
+             (princ el str)
+             (setf first nil)))
+         (princ "\"" str)))
+      ((member spline)
+       (with-output-to-string (str)
+         (princ "\"" str)
+         (let ((first t))
+           (dolist (el value)
+             (unless first
+               (princ " " str))
+             (princ (first el) str)
+             (princ "," str)
+             (princ (second el) str)
+             (setf first nil)))
+         (princ "\"" str)))
+      ((member bounding-box)
+       (with-output-to-string (str)
+         (princ "\"" str)
+         (let ((first t))
+           (dolist (el value)
+             (unless first
+               (princ ", " str))
+             (princ (first el) str)
+             (princ "," str)
+             (princ (second el) str)
+             (setf first nil)))
+         (princ "\"" str)))
+      ((member integer)
+       (unless (typep value 'integer)
+         (error "Invalid value for ~S: ~S is not an integer"
+                key value))
+       value)
+      ((member boolean)
+       (if value
+           "true"
+           "false"))
+      ((member text)
+       (textify value))
+      ((member float)
+       ;; graphviz does not support the 1.2e-3 format
+       (with-output-to-string (str)
+         (format str "~,f" (coerce value 'single-float))))
+      (list
+       (unless (member value value-type :test 'equal)
+         (error "Invalid value for ~S: ~S is not one of ~S"
+                key value value-type))
+       (if (symbolp value)
+           (string-downcase value)
+           value)))))
+
 (defun print-dot-key-value (key value dot-attributes stream)
-  (destructuring-bind (key value-type)
+  (destructuring-bind (key value-type &optional html)
       (or (assoc key dot-attributes)
           (error "Invalid attribute ~S" key))
     (write-name-for-dot key stream)
-    (format stream "=~a" 
-            (etypecase value-type
-              ((member coordinate)
-               (with-output-to-string (str)
-                 (princ "\"" str)
-                 (let ((first t))
-                   (dolist (el value)
-                     (unless first
-                       (princ "," str))
-                     (princ el str)
-                     (setf first nil)))
-                 (princ "\"" str)))
-              ((member spline)
-               (with-output-to-string (str)
-                 (princ "\"" str)
-                 (let ((first t))
-                   (dolist (el value)
-                     (unless first
-                       (princ " " str))
-                     (princ (first el) str)
-                     (princ "," str)
-                     (princ (second el) str)
-                     (setf first nil)))
-                 (princ "\"" str)))
-              ((member bounding-box)
-               (with-output-to-string (str)
-                 (princ "\"" str)
-                 (let ((first t))
-                   (dolist (el value)
-                     (unless first
-                       (princ ", " str))
-                     (princ (first el) str)
-                     (princ "," str)
-                     (princ (second el) str)
-                     (setf first nil)))
-                 (princ "\"" str)))
-              ((member integer)
-               (unless (typep value 'integer)
-                 (error "Invalid value for ~S: ~S is not an integer"
-                        key value))
-               value)
-              ((member boolean)
-               (if value
-                   "true"
-                   "false"))
-              ((member text)
-               (textify value))
-              ((member float)
-               ;; graphviz does not support the 1.2e-3 format
-               (with-output-to-string (str)
-                 (format str "~,f" (coerce value 'single-float))))
-              (list
-               (unless (member value value-type :test 'equal)
-                 (error "Invalid value for ~S: ~S is not one of ~S"
-                        key value value-type))
-               (if (symbolp value)
-                   (string-downcase value)
-                   value))))))
+    (let ((*textify-html* (and html *is-html*)))
+      (format stream
+              "=~a"
+              (key-value-for-type-as-string key
+                                            value
+                                            value-type)))))
 
 (defmethod write-name-for-dot (attribute stream)
   (format stream "~(~A~)" attribute))
@@ -471,23 +521,35 @@ B--D []
 (defmethod write-name-for-dot ((attribute (eql :url)) stream)
   (format stream "URL"))
 
+(defvar *is-html* nil)
+(export '*is-html* *package*)
+
+(defvar *textify-html* nil)
+
 (defun textify (object)
   (let ((string (princ-to-string object)))
-    (with-output-to-string (stream)
-      (write-char #\" stream)
-      (loop for c across string do
-            ;; Note: #\\ should not be escaped to allow \n, \l, \N, etc.
-            ;; to work.
-            (case c
-              ((#\")
-               (write-char #\\ stream)
-               (write-char c stream))
-              (#\Newline
-               (write-char #\\ stream)
-               (write-char #\n stream))
-              (t
-               (write-char c stream))))
-      (write-char #\" stream))))
+    (let ((*textify-html* (and (plusp (length string))
+                               (char= #\< (char string 0)))))
+      (with-output-to-string (stream)
+        (unless *textify-html*
+          (write-char #\" stream))
+        (loop for c across string do
+           ;; Note: #\\ should not be escaped to allow \n, \l, \N, etc.
+           ;; to work.
+             (cond
+               (*textify-html* (write-char c stream))
+               (t
+                (case c
+                  ((#\")
+                   (write-char #\\ stream)
+                   (write-char c stream))
+                  (#\Newline
+                   (write-char #\\ stream)
+                   (write-char #\n stream))
+                  (t
+                   (write-char c stream))))))
+        (unless *textify-html*
+          (write-char #\" stream))))))
 
 ;;; ---------------------------------------------------------------------------
 ;
@@ -498,26 +560,45 @@ B--D []
 #+(or linux unix)
 (defvar *dot-path* "/usr/bin/dot" "Path to `dot`")
 
-(defmethod graph->dot-external ((g basic-graph) file-name &rest args &key (type :ps) &allow-other-keys)
+(defmethod graph->dot-external ((g basic-graph) file-name &rest args &key (type nil) stream &allow-other-keys)
   "Generate an external represenation of a graph to a file, by running
 the program in *dot-path*."
   (declare (ignorable file-name))
-  (let ((dot-string (apply #'graph->dot g nil args))
-        (dot-type (concatenate 'string "-T" (string-downcase (symbol-name type)))))
-    (declare (ignorable dot-string dot-type))
-    #+lispworks (with-open-stream
-                    (s (sys:open-pipe (concatenate 'string *dot-path* " -Tpng -o" file-name)
-                                      :direction :input))
-                    (write-line dot-string s)
-                    (force-output s)
-		    (close s))
-    #+sbcl
-    (sb-ext:run-program *dot-path*
-                        (list dot-type "-o" file-name)
-                        :input (make-string-input-stream dot-string)
-                        :output *standard-output*)
-    #-(or sbcl lispworks)
-    (error "Don't know how to execute a program on this platform")))
+  (setf type (and type (string-downcase type)))
+  (let* ((file-name
+          (and file-name
+               (if type
+                   (merge-pathnames (make-pathname :type type)
+                                    (pathname file-name))
+                   (pathname file-name))))
+         (type (or type (and file-name (pathname-type file-name))))
+         (string-stream (make-string-output-stream)))
+    (apply #'graph->dot
+           g
+           (if stream
+               (if file-name
+                   (make-broadcast-stream string-stream stream)
+                   stream)
+               string-stream)
+           args)
+    (when file-name
+      (let ((dot-string (get-output-stream-string string-stream))
+            (dot-type (concatenate 'string "-T" type)))
+        (declare (ignorable dot-string dot-type))
+        #+lispworks (with-open-stream
+                        (s (sys:open-pipe (concatenate 'string *dot-path* " -Tpng -o" file-name)
+                                          :direction :input))
+                      (write-line dot-string s)
+                      (force-output s)
+		      (close s))
+        #+sbcl
+        (sb-ext:run-program *dot-path*
+                            (list dot-type "-o" (namestring file-name))
+                            :input (make-string-input-stream dot-string)
+                            :output *standard-output*)
+        #-(or sbcl lispworks)
+        (error "Don't know how to execute a program on this platform")
+        (probe-file file-name)))))
 
 ;;;
 ; Test dot external

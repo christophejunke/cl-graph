@@ -191,44 +191,46 @@ something is putting something on the vertexes plist's
   (values value))
 
 
-(defmethod make-vertex-for-graph ((graph basic-graph) &rest args &key
-                                  (vertex-class (vertex-class graph))
-                                  &allow-other-keys)
-  (remf args :vertex-class)
-  (assert (subtypep vertex-class (vertex-class graph)) nil
-          "Vertex class '~A' must be a subtype of ~A" vertex-class (vertex-class graph))
-  (apply #'make-instance vertex-class :graph graph args))
-
+(defmethod make-vertex-for-graph
+    ((graph basic-graph) &rest args &key
+                                      (vertex-class (vertex-class graph))
+                                      &allow-other-keys)
+  (let ((args (copy-list args)))
+    (remf args :vertex-class)
+    (assert (subtypep vertex-class (vertex-class graph)) nil
+            "Vertex class '~A' must be a subtype of ~A" vertex-class (vertex-class graph))
+    (apply #'make-instance vertex-class :graph graph args)))
 
 (defmethod make-edge-for-graph ((graph basic-graph)
                                 (vertex-1 basic-vertex) (vertex-2 basic-vertex)
                                 &rest args &key
-                                (edge-type (default-edge-type graph))
-                                (edge-class (default-edge-class graph))
-                                &allow-other-keys)
-  (remf args :edge-class)
-  (remf args :edge-type)
-  (assert (or (null edge-type)
-              (eq edge-type :directed)
-              (eq edge-type :undirected)) nil
-          "Edge-type must be nil, :directed or :undirected.")
+                                             (edge-type (default-edge-type graph))
+                                             (edge-class (default-edge-class graph))
+                                             &allow-other-keys)
+  (let ((args (copy-list args)))  
+    (remf args :edge-class)
+    (remf args :edge-type)
+    (assert (or (null edge-type)
+                (eq edge-type :directed)
+                (eq edge-type :undirected)) nil
+                "Edge-type must be nil, :directed or :undirected.")
 
-  (assert (or (null edge-class)
-              (subtypep edge-class (directed-edge-class graph))
-              (subtypep edge-class (undirected-edge-class graph))) nil
-          "Edge-class must be nil or a subtype of ~A or ~A"
-          (undirected-edge-class graph)
-          (directed-edge-class graph))
+    (assert (or (null edge-class)
+                (subtypep edge-class (directed-edge-class graph))
+                (subtypep edge-class (undirected-edge-class graph))) nil
+                "Edge-class must be nil or a subtype of ~A or ~A"
+                (undirected-edge-class graph)
+                (directed-edge-class graph))
 
-  (apply #'make-instance
-         (or edge-class
-             (ecase edge-type
-               (:directed (directed-edge-class graph))
-               (:undirected (undirected-edge-class graph))
-               ((nil) nil))
-             (undirected-edge-class graph))
-         :graph graph
-         :vertex-1 vertex-1 :vertex-2 vertex-2 args))
+    (apply #'make-instance
+           (or edge-class
+               (ecase edge-type
+                 (:directed (directed-edge-class graph))
+                 (:undirected (undirected-edge-class graph))
+                 ((nil) nil))
+               (undirected-edge-class graph))
+           :graph graph
+           :vertex-1 vertex-1 :vertex-2 vertex-2 args)))
 
 
 (defmethod make-graph ((graph-type symbol) &rest args &key &allow-other-keys)
@@ -303,36 +305,37 @@ something is putting something on the vertexes plist's
 ;; :ignore, :force, :replace, <function>
 
 (defmethod add-vertex ((graph basic-graph) (value t) &rest args &key
-                       (if-duplicate-do :ignore) &allow-other-keys)
-  (remf args :if-duplicate-do)
-  (let ((existing-vertex (find-vertex graph value nil)))
-    (labels ((make-it ()
-               (apply #'make-vertex-for-graph graph :element value args))
-             (add-it (why)
-               (values (add-vertex graph (make-it)) why)))
-      (if existing-vertex
-        (cond ((eq if-duplicate-do :ignore)
-               (values existing-vertex :ignore))
+                                                                  (if-duplicate-do :ignore) &allow-other-keys)
+  (let ((args (copy-list args)))
+    (remf args :if-duplicate-do)
+    (let ((existing-vertex (find-vertex graph value nil)))
+      (labels ((make-it ()
+                 (apply #'make-vertex-for-graph graph :element value args))
+               (add-it (why)
+                 (values (add-vertex graph (make-it)) why)))
+        (if existing-vertex
+            (cond ((eq if-duplicate-do :ignore)
+                   (values existing-vertex :ignore))
 
-              ((eq if-duplicate-do :force)
-               (add-it :force))
+                  ((eq if-duplicate-do :force)
+                   (add-it :force))
 
-              ((eq if-duplicate-do :replace)
-               (replace-vertex graph existing-vertex (make-it)))
+                  ((eq if-duplicate-do :replace)
+                   (replace-vertex graph existing-vertex (make-it)))
 
-              ((eq if-duplicate-do :replace-value)
-               (setf (element existing-vertex) value)
-               (values existing-vertex :replace-value))
+                  ((eq if-duplicate-do :replace-value)
+                   (setf (element existing-vertex) value)
+                   (values existing-vertex :replace-value))
 
-              ((eq if-duplicate-do :error)
-               (error "Attempting to insert a duplicate node in graph ~a" graph))
+                  ((eq if-duplicate-do :error)
+                   (error "Attempting to insert a duplicate node in graph ~a" graph))
 
-              (t
-               (values (funcall if-duplicate-do existing-vertex)
-                       :duplicate)))
+                  (t
+                   (values (funcall if-duplicate-do existing-vertex)
+                           :duplicate)))
 
-        ;; not found, add
-        (add-it :new)))))
+            ;; not found, add
+            (add-it :new))))))
 
 
 (defmethod replace-vertex ((graph basic-graph) (old basic-vertex) (new basic-vertex))
@@ -379,61 +382,62 @@ something is putting something on the vertexes plist's
 				      &key (value nil) (if-duplicate-do :ignore)
 					(edge-type (default-edge-type graph))
 					(edge-class (default-edge-class graph))
-                                      &allow-other-keys)
-  (declare (dynamic-extent args))
-  (remf args :if-duplicate-do)
-; Here, check if we know the edge-type/edge-class, and handle the
-; graph-edge-not-found-error for non-directed edges in such a way that
-; _both_ orderings of endvertices are checked.  There are three ways
-; to avoid checking both orderings: First, make the graph use directed
-; edges by default; second, specify the edge-type as :directed; third,
-; specify an edge-class that is a directed-edge-mixin.
-  (let ((edge (handler-case (find-edge-between-vertexes graph v-1 v-2 :error-if-not-found? t)
-		(graph-edge-not-found-error (enf)
-		  (when (or 
-			 ; avoid by using directed edges by default
-			 (not (subtypep (default-edge-class graph) 'directed-edge-mixin))
-			 ; avoid with :directed edge-type specified
-			 (and (not (null edge-type))
-			      (not (eq edge-type :directed)))
-			 ; avoid with a specified directed edge-class
-			 (and (not (null edge-class))
-			      (not (subtypep edge-class 'directed-edge-mixin))))
-		    (find-edge-between-vertexes graph v-2 v-1 :error-if-not-found? nil))))))
-    (flet ((add-it (why)
-             (values (add-edge ; method must be specialized for impl of basic-graph
-                      graph
-                      (apply #'make-edge-for-graph graph v-1 v-2 args))
-                     why)))
-      (if edge
-        (cond
-         ((eq if-duplicate-do :ignore)
-          (values edge :ignore))
+                                        &allow-other-keys)
+  (let ((args (copy-list args)))
+    (remf args :if-duplicate-do)
+    ;; Here, check if we know the edge-type/edge-class, and handle the
+    ;; graph-edge-not-found-error for non-directed edges in such a way that
+    ;; _both_ orderings of endvertices are checked.  There are three ways
+    ;; to avoid checking both orderings: First, make the graph use directed
+    ;; edges by default; second, specify the edge-type as :directed; third,
+    ;; specify an edge-class that is a directed-edge-mixin.
+    (let ((edge (handler-case (find-edge-between-vertexes graph v-1 v-2 :error-if-not-found? t)
+		  (graph-edge-not-found-error (enf)
+                    (declare (ignore enf))
+		    (when (or 
+                                        ; avoid by using directed edges by default
+			   (not (subtypep (default-edge-class graph) 'directed-edge-mixin))
+                                        ; avoid with :directed edge-type specified
+			   (and (not (null edge-type))
+			        (not (eq edge-type :directed)))
+                                        ; avoid with a specified directed edge-class
+			   (and (not (null edge-class))
+			        (not (subtypep edge-class 'directed-edge-mixin))))
+		      (find-edge-between-vertexes graph v-2 v-1 :error-if-not-found? nil))))))
+      (flet ((add-it (why)
+               (values (add-edge ; method must be specialized for impl of basic-graph
+                        graph
+                        (apply #'make-edge-for-graph graph v-1 v-2 args))
+                       why)))
+        (if edge
+            (cond
+              ((eq if-duplicate-do :ignore)
+               (values edge :ignore))
 
-         ((eq if-duplicate-do :force)
-          (add-it :force))
+              ((eq if-duplicate-do :force)
+               (add-it :force))
 
-         ((eq if-duplicate-do :force-if-different-value)
-          (if (equal (value edge) value)
-            (values :ignore)
-            (add-it :force)))
+              ((eq if-duplicate-do :force-if-different-value)
+               (if (equal (value edge) value)
+                   (values :ignore)
+                   (add-it :force)))
 
 
-         ((eq if-duplicate-do :replace)
-          (warn "replace edges isn't really implemented, maybe you can use :replace-value")
-          (delete-edge graph edge)
-          (add-it :replace))
+              ((eq if-duplicate-do :replace)
+               (warn "replace edges isn't really implemented, maybe you can use :replace-value")
+               (delete-edge graph edge)
+               (add-it :replace))
 
-         ((eq if-duplicate-do :replace-value)
-          (setf (element edge) value)
-          (values edge :replace-value))
+              ((eq if-duplicate-do :replace-value)
+               (setf (element edge) value)
+               (values edge :replace-value))
 
-         (t
-          (setf edge (funcall if-duplicate-do edge))
-          (values edge :duplicate)))
+              (t
+               (setf edge (funcall if-duplicate-do edge))
+               (values edge :duplicate)))
 
-        ;; not found, add
-        (add-it :new)))))
+            ;; not found, add
+            (add-it :new))))))
 
 
 ;; There is never intended to be an instance of basic-edge or
@@ -933,6 +937,31 @@ nil gathers the entire closure(s)."
 
 ;;; mapping
 
+(defun map-paths-between (graph
+                          start-vertex
+                          end-vertex
+                          fn &key
+                               max-size
+                               (filter (constantly t)))
+  
+  ;; a sort of depth first search
+  (labels
+      ((filter (vertex) (funcall filter vertex))
+       (callback (path) (funcall fn path))
+       (walk (next-vertex current-path length)
+         (when (eq next-vertex end-vertex)
+           (callback (cons end-vertex current-path)))
+         (unless (and max-size (> length max-size))
+           (let ((larger (1+ length)))
+             (iterate-neighbors
+              next-vertex
+              (lambda (v)
+                (when (filter v)
+                  (unless (find-item current-path v)
+                    (walk v (list* next-vertex current-path) larger)))))))))
+    (walk start-vertex nil 0)
+    graph))
+
 (defun map-paths (graph start-vertex length fn &key (filter (constantly t)))
   "Apply fn to each path that starts at start-vertex and is of exactly length
 length"
@@ -956,7 +985,6 @@ length"
        (when (funcall filter v)
          (follow-path v (list v start-vertex) (1- length))))))
   (values graph))
-
 
 (defun map-shortest-paths
     (graph start-vertex depth fn &key (filter (constantly t)))

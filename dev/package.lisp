@@ -19,6 +19,8 @@ DISCUSSION
    
    #:make-graph
    #:basic-graph
+
+   #:aux-dot-graph
    
    #:add-edge-between-vertexes     ; graph { value | vertex } { value | vertex }
    #:delete-edge-between-vertexes  ; graph { value | vertex } { value | vertex }
@@ -185,4 +187,14 @@ DISCUSSION
    #:dot-attribute-value
    #:dot-attributes-mixin
    #:*dot-graph-attributes*
+
+
+   #:*graph-formatter*
+   #:*vertex-key*
+   #:*vertex-labeler*
+   #:*vertex-formatter*
+   #:*edge-labeler*
+   #:*edge-formatter*
+
+   #:key-value-for-type-as-string
    ))
